@@ -18,6 +18,18 @@ You can also find the more detailed demo at [video link on Youtube](https://www.
 - Support interactive segmentation with box input to generate mask.
 
 ### :bulb: Installation
+IMPORTANT!!! 
+You need to install right versions of CUDA and PyTorch
+nvcc --version == 11.7 
+nvidia-smi == 11.4
+pip show torch == 1.13.1
+
+After installing detectron2 you need to compile make.sh  file by commands:
+cd openseed/body/encoder/ops/make.sh
+sh make.sh
+
+If you reinstall CUDA and PyTorch versions for different reasons you need to rebuild make.sh again!!!
+
 ```sh
 pip3 install torch==1.13.1 torchvision==0.14.1 --extra-index-url https://download.pytorch.org/whl/cu113
 python -m pip install 'git+https://github.com/MaureenZOU/detectron2-xyz.git'
