@@ -197,17 +197,22 @@ python train_net.py --eval_only --num-gpus 1 --config-file configs/openseed/open
 Для запуска инференса необходимо запустить следующую команду:
 
 ```
-python scripts/inference_instseg.py evaluate --conf_files configs/openseed/openseed_swint_lang.yaml \
+python scripts/inference_instseg.py evaluate \
+--conf_files configs/openseed/openseed_swint_lang.yaml \
 --annotation_path datasets/valid_cleaner/integrant_wires.json \
---images_path datasets/valid_cleaner/integrant_wires --output_root output/ \
+--images_path datasets/valid_cleaner/integrant_wires \
+--output_root output/ \
 --overrides WEIGHT Weights/model_state_dict_swint_51.2ap.pt
 ```
 
 Здесь нужно передать:
 - --conf_files = путь к конфигу датасета
-- --annotation_path = путь к аннотационному файлу .json в формате COCO
-- --images_path = путь к папке с изображениями (не добавляйте в клнце слеш "/", могут возникнуть проблемы)
+- --annotation_path = путь к аннотационному файлу .json в формате **COCO**
+- --images_path = путь к папке с изображениями (не добавляйте в конце слеш "/", могут возникнуть проблемы)
 - --output_root = путь к папке с результатами инференса
 - --overrides = путь к весам модели
 
-Также, в файле scripts/inference_instseg.py необходимо указать желаемые запросы в списке REQUEST_LIST в начале файла после всех импортов.
+Также, в файле [scripts/inference_instseg.py](scripts/inference_instseg.py) после всех импортов необходимо указать **константы**:
+- REQUEST_LIST - желаемые запросы в списке
+- TIME_NUMBER_START - номер изображения, после которого начнется замер среднего времени инференса
+- THRESHOLD - порог по скору для визуализации и аннотаций
