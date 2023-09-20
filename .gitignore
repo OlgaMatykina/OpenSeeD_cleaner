@@ -9,6 +9,8 @@ gen
 
 ### Weights
 Weights/
+*.pt
+*.pth
 
 ### Vim template
 [._]*.s[a-w][a-z]

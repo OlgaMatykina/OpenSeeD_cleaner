@@ -191,3 +191,20 @@ python train_net.py --eval_only --num-gpus 1 --config-file configs/openseed/open
 ```
 
 Т.к. OpenSeeD обладает хорошей способностью к Open Vocabulary Segmentation, вероятность того, что метрики будут около 0 для всех категорий низкая и такая ситуация скорее всего свидетельствует о том, что нарушено соответствие между названиями категорий внутри модуля OpenSeeD и внутри модуля, использующегося для валидации.
+
+# Inference
+
+Для запуска инференса необходимо запустить следующую команду:
+
+```
+python scripts/inference_instseg.py evaluate --conf_files configs/openseed/openseed_swint_lang.yaml --annotation_path datasets/valid_cleaner/integrant_wires.json --images_path datasets/valid_cleaner/integrant_wires --output_root output/ --overrides WEIGHT Weights/model_state_dict_swint_51.2ap.pt
+```
+
+Здесь нужно передать:
+--conf_files = путь к конфигу датасета
+--annotation_path = путь к аннотационному файлу .json в формате COCO
+--images_path = путь к папке с изображениями (не добавляйте в клнце слеш "/", могут возникнуть проблемы)
+--output_root = путь к папке с результатами инференса
+--overrides = путь к весам модели
+
+Также, в файле scripts/inference_instseg.py необходимо указать желаемые запросы в списке REQUEST_LIST в начале файла после всех импортов.
