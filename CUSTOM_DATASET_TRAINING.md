@@ -197,7 +197,10 @@ python train_net.py --eval_only --num-gpus 1 --config-file configs/openseed/open
 Для запуска инференса необходимо запустить следующую команду:
 
 ```
-python scripts/inference_instseg.py evaluate --conf_files configs/openseed/openseed_swint_lang.yaml --annotation_path datasets/valid_cleaner/integrant_wires.json --images_path datasets/valid_cleaner/integrant_wires --output_root output/ --overrides WEIGHT Weights/model_state_dict_swint_51.2ap.pt
+python scripts/inference_instseg.py evaluate --conf_files configs/openseed/openseed_swint_lang.yaml \
+--annotation_path datasets/valid_cleaner/integrant_wires.json \
+--images_path datasets/valid_cleaner/integrant_wires --output_root output/ \
+--overrides WEIGHT Weights/model_state_dict_swint_51.2ap.pt
 ```
 
 Здесь нужно передать:
