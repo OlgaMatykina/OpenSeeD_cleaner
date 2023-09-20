@@ -20,13 +20,24 @@ You can also find the more detailed demo at [video link on Youtube](https://www.
 ### :bulb: Installation
 IMPORTANT!!! 
 You need to install right versions of CUDA and PyTorch
-nvcc --version == 11.7 
-nvidia-smi == 11.4
-pip show torch == 1.13.1
+```
+nvcc --version 
+```
+== 11.7 
+```
+nvidia-smi
+```
+== 11.4
+```
+pip show torch 
+```
+== 1.13.1
 
 After installing detectron2 you need to compile make.sh  file by commands:
-cd openseed/body/encoder/ops/make.sh
+```
+cd openseed/body/encoder/ops
 sh make.sh
+```
 
 If you reinstall CUDA and PyTorch versions for different reasons you need to rebuild make.sh again!!!
 
