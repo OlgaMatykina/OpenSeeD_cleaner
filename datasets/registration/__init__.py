@@ -14,4 +14,5 @@ from . import (
     register_scannet_panoptic,
     register_bdd100k_panoseg,
     register_object365_od,
+    register_cleaner,
 )

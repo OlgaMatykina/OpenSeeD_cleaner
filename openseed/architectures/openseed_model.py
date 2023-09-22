@@ -18,10 +18,13 @@ from ..body import build_openseed_head
 from ..modules import sem_seg_postprocess, HungarianMatcher, SetCriterion
 from ..language import build_language_encoder
 
+from detectron2.utils.events import get_event_storage
 from detectron2.structures import Boxes, ImageList, Instances, BitMasks
 from detectron2.utils.memory import retry_if_cuda_oom
 from detectron2.data import MetadataCatalog
 import random
+import wandb
+
 
 class OpenSeeD(nn.Module):
     """
@@ -58,6 +61,7 @@ class OpenSeeD(nn.Module):
         coco_on=True,
         coco_mask_on=True,
         o365_on=True,
+        cleaner_on=True,
         merge_class=False
     ):
         """
@@ -115,10 +119,27 @@ class OpenSeeD(nn.Module):
         self.train_class_names = dict()
         self.train_dataset_name = train_dataset_name
         self.coco_mask_on = coco_mask_on
-        self.task_switch = {'coco': coco_on, 'o365': o365_on}
+        self.task_switch = {'coco': coco_on, 'o365': o365_on, 'cleaner': cleaner_on}
         print("self.task_switch ", self.task_switch)
         # HACK for only two datasets for seg and det
         if coco_on:
+            task = 'seg'
+            if not coco_mask_on:
+                task = 'det'
+            self.train_class_names[task] = get_class_names(train_dataset_name[0], background=background)
+            self.train_class_names[task] = [a.replace("-merged", "").replace("-other", "").replace("-stuff", "") for a
+                                             in self.train_class_names[task]]
+            train_class_names = []
+            for name in self.train_class_names[task]:
+                names = name.split('-')
+                if len(names) > 1:
+                    assert len(names) == 2
+                    train_class_names.append(names[1] + ' ' + names[0])
+                else:
+                    train_class_names.append(name)
+            self.train_class_names[task] = train_class_names
+
+        if cleaner_on:
             task = 'seg'
             if not coco_mask_on:
                 task = 'det'
@@ -263,6 +284,7 @@ class OpenSeeD(nn.Module):
             "train_dataset_name": cfg['DATASETS']['TRAIN'], # HACK for only two training set
             "background": cfg['MODEL'].get('BACKGROUND', True),
             "coco_on": dec_cfg.get('COCO', True),
+            "cleaner_on": dec_cfg.get('CLEANER', True),
             "coco_mask_on": dec_cfg.get('COCO_MASK', True),
             "o365_on": dec_cfg.get('O365', True),
         }
@@ -294,8 +316,27 @@ class OpenSeeD(nn.Module):
                 for key, value in losses_o365.items():
                     new_losses_o365['o365.'+str(key)] = losses_o365[key]
                 losses.update(new_losses_o365)
+            if self.task_switch['cleaner']:
+                #self.criterion.num_classes = 133 if 'pano' in self.train_dataset_name[0] else 80
+                self.criterion.num_classes = 20
+                task = 'seg'
+                if not self.coco_mask_on:
+                    task = 'det'
+                # import ipdb; ipdb.set_trace()
+                losses_coco = self.forward_seg(batched_inputs['cleaner'], task=task)
+                new_losses_coco = {}
+                for key, value in losses_coco.items():
+                    new_losses_coco['coco.'+str(key)] = losses_coco[key]
+                losses.update(new_losses_coco)
+                losses.update({
+                    "Total loss": sum([loss for k, loss in losses.items()])
+                })
+                storage = get_event_storage()
+                wandb.log(losses, step=storage.iter)
             return losses
         else:
+            if self.task_switch['cleaner']:
+                inference_task = 'inst_seg'
             processed_results = self.forward_seg(batched_inputs, task=inference_task)
             return processed_results
 
@@ -424,7 +465,6 @@ class OpenSeeD(nn.Module):
                     processed_results[-1]["panoptic_seg"] = panoptic_r
 
                 # instance segmentation inference
-
                 if self.instance_on:
                     mask_box_result = mask_box_result.to(mask_pred_result)
                     height = new_size[0]/image_size[0]*height

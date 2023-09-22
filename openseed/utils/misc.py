@@ -209,6 +209,10 @@ def get_class_names(name, background=True):
         class_names = OBJECT365
     elif 'lvis' in name:
         class_names = LVIS_CATEGORIES
+    elif name == 'cleaner_v1_train':
+        class_names =CLEANER
+    elif name == 'cleaner_v1_val':
+        class_names = CLEANER
     elif 'seginw' in name:
         class_names = SEGINW_CATEGORIES[name.replace('_train', '').replace('_val', '')] + ["background"]
     elif name == 'cityscapes_fine_sem_seg_val':
