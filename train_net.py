@@ -443,7 +443,7 @@ def main(args=None):
     trainer.resume_or_load(resume=args.resume)
     if args.original_load:  # loading checkpoints with different name prefix
         print("using original loading")
-        trainer._trainer.model.module = trainer._trainer.model.module.from_pretrained(cfg.MODEL.WEIGHTS)
+        trainer._trainer.model.module = trainer._trainer.model.modules.from_pretrained(cfg.MODEL.WEIGHTS) # changed module to modules
     return trainer.train()
 
 

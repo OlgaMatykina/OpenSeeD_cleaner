@@ -60,8 +60,8 @@ REQUEST_LIST = [            # LIST OF REQUESTS
     "manhole",
 ]
 TIME_NUMBER_START = 2       # START NUMBER OF CALCULATING AVERAGE INFERENCE TIME
-MAX_WIDTH = 1280            # NEED THIS CONSTANT TO AVOID "CUDA out of memory"
-MAX_HEIGHT = 1024           # NEED THIS CONSTANT TO AVOID "CUDA out of memory"
+MAX_WIDTH = 512            # NEED THIS CONSTANT TO AVOID "CUDA out of memory"
+MAX_HEIGHT = 512           # NEED THIS CONSTANT TO AVOID "CUDA out of memory"
 THRESHOLD = 0.1             # THRESHOLD FOR VISUALIZATION AND ANNOTATION
 
 
@@ -118,7 +118,6 @@ class InstanceSegm():
         self.images_files = sorted(glob.glob(f"{self.images_pth}/*"))
         for idx, image_pth in enumerate(tqdm.tqdm(self.images_files)):
             image_name = image_pth.split("/")[-1]
-            self.resized = 0
 
             with torch.no_grad():
                 self.image_ori = Image.open(image_pth).convert("RGB")
@@ -131,9 +130,7 @@ class InstanceSegm():
                 self.cur_width = self.width
                 self.cur_height = self.height
                 # If image too large it needs to beeing resized to avoid "CUDA out of memory"
-                if self.width > MAX_WIDTH and self.height > MAX_HEIGHT:
-                    self.resized = 1
-                    self.resize_img()
+                self.resize_img()
 
                 self.images = torch.from_numpy(self.image_ori.copy()).permute(2,0,1).cuda()
                 batch_inputs = [{"image": self.images, "height": self.cur_height, "width": self.cur_width}]
@@ -159,7 +156,7 @@ class InstanceSegm():
                 bboxes = inst_seg.pred_boxes.tensor[keep]
                 classes = inst_seg.pred_classes.cpu()[keep]
 
-                if masks.shape[0] > 0 and self.resized:
+                if masks.shape[0] > 0:
                     masks = masks[:, : masks.shape[1], : masks.shape[2]].expand(1, -1, -1, -1)
                     # print("Before interpolation", masks.shape)
                     masks = F.interpolate(
@@ -194,23 +191,6 @@ class InstanceSegm():
                     # rle mask in list format
                     segmentation, area = self.binary_mask_to_rle(masks[obj_idx])
 
-                    ## rle mask in str format
-                    # bool_mask = np.array(masks[obj_idx], dtype=bool)
-                    # maxi = bool_mask.max()
-                    # uni = np.unique(bool_mask)
-                    # area = np.where(bool_mask == True)[0].size
-                    # rle = self.encode_binary_mask(bool_mask)
-                    # segmentation = {
-                    #         "counts": rle,
-                    #         "size": [self.cur_height, self.cur_width],
-                    #     }
-
-                    ## rle mask visualization
-                    # if self.resized:
-                    #     img = self.rle2mask(segmentation["counts"], (self.width, self.height))
-                    #     plt.imshow(img)
-                    #     plt.show()
-
                     self.DT_annotation = {
                         "image_id": int(image_id),
                         "category_id": int(category_id),
@@ -233,11 +213,8 @@ class InstanceSegm():
         self.show_info()      
 
     def resize_img(self):
-        w_scale = round(MAX_WIDTH * 100 / self.cur_width)
-        h_scale = round(MAX_HEIGHT * 100 / self.cur_height)
-        scale_percent = max(w_scale, h_scale)
-        self.cur_width = int(self.cur_width * scale_percent / 100)
-        self.cur_height = int(self.cur_height * scale_percent / 100)
+        self.cur_width = MAX_WIDTH
+        self.cur_height = MAX_HEIGHT
         dim = (self.cur_width, self.cur_height)
         self.image_ori = cv2.resize(self.image_ori, dim, interpolation = cv2.INTER_AREA)
     

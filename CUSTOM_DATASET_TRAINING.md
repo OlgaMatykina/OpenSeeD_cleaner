@@ -2,6 +2,26 @@
 
 Если новый датасет использует формат COCO аннотаций и нейминг переменных не очень важен, то в дальнейшей инструкции достаточно изменить количество и имена классов в задействованных файлах. Затем адаптировать размер изображения и количество итераций и периоды чекпоинтов/валидации в конфиге.
 
+# Preparing
+OpenSeed работает с оригинальными размерами изображений и их аннотаций. Если датасет имеет картинки с большими размерами (напрмиер 3000х2250 пикс.), следует уменьшить их размеры и аннотации. Для этого можно использовать скрипт [scripts/resize_images.py](scripts/resize_images.py). Для его запуска необходимо запустить команду:
+
+```
+python scripts/resize_images.py \
+--annotation_path datasets/valid_cleaner/train.json \
+--images_path datasets/valid_cleaner/train
+```
+
+Здесь нужно передать:
+- --annotation_path = путь к аннотационному файлу .json в формате **COCO**
+- --images_path = путь к папке с изображениями (не добавляйте в конце слеш "/", могут возникнуть проблемы)
+
+Также, в файле [scripts/resize_images.py](scripts/resize_images.py) после всех импортов необходимо указать **размеры выходных изображений**:
+- MAX_WIDTH - новая ширина для входных изображений
+- MAX_HEIGHT - новая высота для входных изображений
+
+По дефолту эти константы имеют значения 512, выходные изображения будут квадратных размеров 512х512. 
+Скрипт сформирует новую папку ресайзнутых изображения **images_path + "_resized"**. Там же будет лежать новая аннотация с именем **annotations.json**   
+
 # Config
 Основные части параметров, которые нужно изменить в конфигурационном файле следующие:
 
@@ -97,6 +117,13 @@ Dataset mapper используется для работы DataLoader во вр
 Необходимо указать в [utils/constants.py](utils/constants.py) список названий категорий из нового датасета. Эти имена будут использоваться для формирования текстовых запросов для модели, поэтому критически важно, чтобы их порядок совпадал с тем, что подразумевается при регистрации датасета.
 
 Добавить загрузку категорий в [openseed/utils/misc.py](openseed/utils/misc.py) в функцию get_class_names.
+
+Также, необходимо в файле [utils/misc.py](utils/misc.py) в функции hook_switcher добавить dataset switcher. Например, следующими строчками:
+
+```
+elif name in ['rosbag_v1_train', 'rosbag_v1_val']:
+  mappings = {'SEMANTIC_ON': True, 'INSTANCE_ON': True, 'PANOPTIC_ON': True}
+```
 
 # Model 
 
@@ -198,11 +225,11 @@ python train_net.py --eval_only --num-gpus 1 --config-file configs/openseed/open
 
 ```
 python scripts/inference_instseg.py evaluate \
---conf_files configs/openseed/openseed_swint_lang.yaml \
---annotation_path datasets/valid_cleaner/integrant_wires.json \
---images_path datasets/valid_cleaner/integrant_wires \
+--conf_files configs/openseed/openseed_swint_lang_cleaner.yaml \
+--annotation_path datasets/valid_cleaner/val.json \
+--images_path datasets/valid_cleaner/val \
 --output_root output/ \
---overrides WEIGHT Weights/model_state_dict_swint_51.2ap.pt
+--overrides WEIGHT Weights/chekpoints/model_final.pth
 ```
 
 Здесь нужно передать:
@@ -210,9 +237,27 @@ python scripts/inference_instseg.py evaluate \
 - --annotation_path = путь к аннотационному файлу .json в формате **COCO**
 - --images_path = путь к папке с изображениями (не добавляйте в конце слеш "/", могут возникнуть проблемы)
 - --output_root = путь к папке с результатами инференса
-- --overrides = путь к весам модели
+- --overrides WEIGHT = путь к весам модели
 
 Также, в файле [scripts/inference_instseg.py](scripts/inference_instseg.py) после всех импортов необходимо указать **константы**:
 - REQUEST_LIST - желаемые запросы в списке
 - TIME_NUMBER_START - номер изображения, после которого начнется замер среднего времени инференса
+- MAX_WIDTH - максимальная ширина для входных изображений
+- MAX_HEIGHT - максимальная высота для входных изображений
 - THRESHOLD - порог по скору для визуализации и аннотаций
+
+После окончания работы скрипта в папке --output_root будут лежать фотографии с размеченными масками и DT файл annotation.json с предсказанными боксами и масками в формате COCO.
+
+# Metrics
+
+Чтобы посчитать метрики на GT и DT файлах, необходимпо запустить следующую команду:
+
+```
+python scripts/calculate_metrics.py \
+path/to/GT_file.json \
+path/to/DT_file.json 
+```
+
+Здесь нужно передать:
+- path/to/GT_file.json - путь к GT файлу в формате COCO
+- path/to/DT_file.json - путь к DT файлу в формате COCO

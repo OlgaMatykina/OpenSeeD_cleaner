@@ -146,6 +146,7 @@ class ResizeImage():
 
         print("saved annotation to ", self.new_images_pth + "/annotation.json")
 
+
 def main(args=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--images_path', help='Path to the user input folder of images', default='images/')

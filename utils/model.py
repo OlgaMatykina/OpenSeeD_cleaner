@@ -52,7 +52,8 @@ def align_and_update_state_dicts(model_state_dict, ckpt_state_dict):
         for info in unloaded_log:
             logger.warning(info)
         for key in ckpt_keys:
-            logger.warning("$UNUSED$ {}, Ckpt Shape: {}".format(key, ckpt_state_dict[key].shape))
+            # logger.warning("$UNUSED$ {}, Ckpt Shape: {}".format(key, ckpt_state_dict[key].shape))
+            logger.warning("$UNUSED$ {}, Ckpt Shape: {}".format(key, ckpt_state_dict[key]))
         for info in unmatched_log:
             logger.warning(info)
     return result_dicts

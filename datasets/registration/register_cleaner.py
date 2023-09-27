@@ -38,8 +38,8 @@ CLEANER_CATEGORIES = [
 
 _PREDEFINED_SPLITS_CLEANER = {
     "cleaner": {
-        "cleaner_v1_train": ("valid_cleaner/train", "valid_cleaner/train.json"),
-        "cleaner_v1_val": ("valid_cleaner/val", "valid_cleaner/val.json"),
+        "cleaner_v1_train": ("valid_cleaner/train_resized", "valid_cleaner/train_resized.json"),
+        "cleaner_v1_val": ("valid_cleaner/val_resized", "valid_cleaner/val_resized.json"),
     },
 }
 
