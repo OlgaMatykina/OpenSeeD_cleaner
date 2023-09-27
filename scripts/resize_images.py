@@ -1,83 +1,78 @@
 import os
 import sys
 import cv2
+import tqdm
 import json
 import torch
 import argparse
 import numpy as np
 from PIL import Image
 from matplotlib import cm
+from itertools import groupby
 import matplotlib.pyplot as plt
 from torch.nn import functional as F
 
 
-MAX_WIDTH = 1280            # NEED THIS CONSTANT TO AVOID "CUDA out of memory"
-MAX_HEIGHT = 1024           # NEED THIS CONSTANT TO AVOID "CUDA out of memory"
+MAX_WIDTH = 512            # NEED THIS CONSTANT TO AVOID "CUDA out of memory"
+MAX_HEIGHT = 512           # NEED THIS CONSTANT TO AVOID "CUDA out of memory"
 
 
 class ResizeImage():
     def __init__(self, annotation_pth, images_pth) -> None:
         self.annotations_data = None
         self.annotation_pth = annotation_pth
+        self.data = None
         self.images_data = None
         self.images_pth = images_pth
         self.images_to_resize = {}
+
         self.new_annotations = []
         self.new_images_pth = None
+        self.new_width = MAX_WIDTH
+        self.new_height = MAX_HEIGHT
 
         self.load_annotation()
 
     def load_annotation(self):
         with open(self.annotation_pth, "r") as file:
-            data = json.load(file)
+            self.data = json.load(file)
 
-        self.images_data = data["images"]
-        self.annotations_data = data["annotations"]
-
-        for image in self.images_data:
-            if image["height"] > MAX_HEIGHT and image["width"] > MAX_WIDTH:
-                self.images_to_resize[image["file_name"]] = (image["id"], image["height"], image["width"])
+        self.images_data = self.data["images"]
+        self.annotations_data = self.data["annotations"]
 
     def resize(self):
         self.new_images_pth = self.images_pth + "_resized"
-        for image in self.images_to_resize:
-            self.image_ori = np.asarray(Image.open(self.images_pth + "/" + image).convert("RGB"))
-            self.height_ori = self.images_to_resize[image][1]
-            self.width_ori = self.images_to_resize[image][2]
+        print("resizing images")
+        for image in tqdm.tqdm(self.images_data):
+            self.image_name = image["file_name"]
+            self.image_ori = np.asarray(Image.open(self.images_pth + "/" + self.image_name).convert("RGB"))
+            self.height_ori = self.image_ori.shape[0]
+            self.width_ori = self.image_ori.shape[1]
+
+            image["width"] = self.new_width
+            image["height"] = self.new_height
 
             self.resize_image()  # resize current self.image_ori. Also get self.new_width and self.new_height
-            self.save_image(self.image_ori, image)
+            self.save_image(self.image_ori, self.image_name)
 
-            self.image_annotations = [x for x in self.annotations_data if x["image_id"] == self.images_to_resize[image][0]]
-            for annotation in self.image_annotations:
-                self.segmentation_ori = annotation["segmentation"]
-                self.area_ori = annotation["area"]
-                self.bbox_ori = annotation["bbox"]
+        print("resizing annotations")
+        for annotation in tqdm.tqdm(self.annotations_data):
+            self.segmentation_ori = annotation["segmentation"]
+            self.area_ori = annotation["area"]
+            self.bbox_ori = annotation["bbox"]
 
-                self.resize_bboxes() # resize bboxes, get self.bbox_new
-                self.resize_masks()
+            self.resize_bboxes() # resize bboxes, get self.bbox_new
+            self.resize_masks()
 
-                ##### NEED TO SAVE NEW SEGM, AREA, BBOX FOR CURRENT ANNOTATION
+            annotation["bbox"] = self.bbox_new
+            annotation["segmentation"] = self.segmentation_new
+            annotation["area"] = self.area_new
 
-            ##### NEED TO SAVE NEW ANNOTATIONS FOR CURRENT IMAGE
-            i=0
-
-        ##### NEED TO SAVE NEW ANNOTATIONS FOR CURRENT DATASET
+        self.save_annotations()
         
     def resize_image(self):
-        w_scale = round(MAX_WIDTH * 100 / self.width_ori)
-        h_scale = round(MAX_HEIGHT * 100 / self.height_ori)
-        scale_percent = max(w_scale, h_scale)
-        self.new_width = int(self.width_ori * scale_percent / 100)
-        self.new_height = int(self.height_ori * scale_percent / 100)
         dim = (self.new_width, self.new_height)
         self.image_ori = cv2.resize(self.image_ori, dim, interpolation = cv2.INTER_AREA)
-
-    def save_image(self, image, image_name):
-        image = Image.fromarray(image)
-        if not os.path.exists(self.new_images_pth):
-            os.makedirs(self.new_images_pth)
-        image.save(os.path.join(self.new_images_pth+"/", image_name))
 
     def resize_bboxes(self):
         height_box = self.height_ori
@@ -101,16 +96,10 @@ class ResizeImage():
         segm_height, segm_width = self.segmentation_ori["size"]
         bin_mask = self.rle2mask(rle_mask, (segm_width, segm_height))
 
-        masks = torch.Tensor(bin_mask)
-        # masks = masks[:, : masks.shape[1], : masks.shape[2]].expand(1, -1, -1, -1)
-        masks = masks.expand(1, -1, -1, -1)
-        print("Before interpolation", masks.shape)
-        masks = F.interpolate(
-            masks, size=(self.new_height, self.new_width), mode="nearest"
-        )[0]
-        print("After interpolation", masks.shape)
+        dim = (self.new_width, self.new_height)
+        resized_mask = cv2.resize(bin_mask, dim, interpolation = cv2.INTER_NEAREST)
 
-        i=0
+        self.segmentation_new, self.area_new = self.mask2rle(resized_mask)
 
     def rle2mask(self, mask_rle, shape):
         '''
@@ -129,6 +118,33 @@ class ResizeImage():
             i = i+j
         return img.reshape(shape).T
 
+    def mask2rle(self, binary_mask):
+        rle = {'counts': [], 'size': list(binary_mask.shape)}
+        counts = rle.get('counts')
+        area = 0
+        for i, (value, elements) in enumerate(groupby(binary_mask.ravel(order='F'))):
+            if i == 0 and value == 255:
+                counts.append(0)
+            cnt = len(list(elements))
+            counts.append(cnt)
+            if value == 255:
+                area += cnt
+        return rle, area
+
+    def save_image(self, image, image_name):
+        image = Image.fromarray(image)
+        if not os.path.exists(self.new_images_pth):
+            os.makedirs(self.new_images_pth)
+        image.save(os.path.join(self.new_images_pth+"/", image_name))
+
+    def save_annotations(self):
+        if not os.path.exists(self.new_images_pth):
+            os.makedirs(self.new_images_pth)
+
+        with open(self.new_images_pth + "/annotation.json", "w") as outfile:
+            json.dump(self.data, outfile)
+
+        print("saved annotation to ", self.new_images_pth + "/annotation.json")
 
 def main(args=None):
     parser = argparse.ArgumentParser()
