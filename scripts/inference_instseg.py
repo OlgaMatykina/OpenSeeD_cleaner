@@ -9,6 +9,7 @@ import time
 import json
 import base64
 import zlib
+from json import encoder
 from itertools import groupby
 import matplotlib.pyplot as plt
 
@@ -37,32 +38,57 @@ from utils.visualizer import Visualizer
 gc.collect()
 torch.cuda.empty_cache()
 logger = logging.getLogger(__name__)
+encoder.FLOAT_REPR = lambda o: format(o, '.5f')
 
 
 REQUEST_LIST = [            # LIST OF REQUESTS
-    "bump", 
-    "pit", 
-    "puddle", 
     "firehose", 
     "hose", 
     "wire", 
-    "catch basin", 
+    "rope",
     "poop", 
+    "puddle", 
+    "pit", 
+    "bump", 
     "curb",
-    "bike lane",
-    "pedestrian area",
     "rail track",
-    "road",
-    "sidewalk",
     "sand",
-    "terrain",
-    "vegetation",
     "manhole",
+    "catch basin", 
+    "sidewalk",
+    "pedestrian area",
+    "bike lane",
+    "grass",
+    "vegetation",
+    "terrain",
+    "road",
 ]
+COLORS = [
+            [255, 0, 0],
+            [0, 255, 0],
+            [0, 0, 255],
+            [255, 255, 0],
+            [0, 255, 255],
+            [255, 0, 255],
+            [84, 84, 0],
+            [0, 170, 255],
+            [218, 218, 218],
+            [84, 84, 255],
+            [76, 76, 76],
+            [170, 255, 255],
+            [170, 84, 255],
+            [170, 0, 127],
+            [170, 255, 0],
+            [255, 170, 127],
+            [0, 84, 255],
+            [118, 171, 47],
+            [84, 0, 255],
+            [255, 84, 255],
+        ]
 TIME_NUMBER_START = 2       # START NUMBER OF CALCULATING AVERAGE INFERENCE TIME
 MAX_WIDTH = 512            # NEED THIS CONSTANT TO AVOID "CUDA out of memory"
 MAX_HEIGHT = 512           # NEED THIS CONSTANT TO AVOID "CUDA out of memory"
-THRESHOLD = 0.1             # THRESHOLD FOR VISUALIZATION AND ANNOTATION
+THRESHOLD = 0.5             # THRESHOLD FOR VISUALIZATION AND ANNOTATION
 
 
 class InstanceSegm():
@@ -74,6 +100,7 @@ class InstanceSegm():
         self.annotation_pth = annotation_pth
         self.images_ids = {}
 
+        self.treshold = THRESHOLD
         self.total_time = 0
         self.skipped_first_time = 0
 
@@ -88,7 +115,8 @@ class InstanceSegm():
         self.transform = transforms.Compose(t)
 
         self.thing_classes = REQUEST_LIST
-        self.thing_colors = [random_color(rgb=True, maximum=255).astype(np.int_).tolist() for _ in range(len(self.thing_classes))]
+        # self.thing_colors = [random_color(rgb=True, maximum=255).astype(np.int_).tolist() for _ in range(len(self.thing_classes))]
+        self.thing_colors = COLORS
         thing_dataset_id_to_contiguous_id = {x:x for x in range(len(self.thing_classes))}
 
         MetadataCatalog.get("demo").set(
@@ -132,7 +160,7 @@ class InstanceSegm():
                 # If image too large it needs to beeing resized to avoid "CUDA out of memory"
                 self.resize_img()
 
-                self.images = torch.from_numpy(self.image_ori.copy()).permute(2,0,1).cuda()
+                self.images = torch.from_numpy(self.image_new.copy()).permute(2,0,1).cuda()
                 batch_inputs = [{"image": self.images, "height": self.cur_height, "width": self.cur_width}]
                 
                 cur_time = time.time()
@@ -142,15 +170,17 @@ class InstanceSegm():
                 if idx >= TIME_NUMBER_START:
                     self.skipped_first_time += time.time() - cur_time
                 
-                visual = Visualizer(self.image_ori, metadata=self.metadata)
                 inst_seg = outputs[-1]["instances"]
-                
+
                 inst_seg.pred_masks = inst_seg.pred_masks.cpu()
                 inst_seg.pred_boxes = BitMasks(inst_seg.pred_masks > 0).get_bounding_boxes()
-                demo = visual.draw_instance_predictions(inst_seg, threshold=THRESHOLD) # rgb Image
 
+                visual = Visualizer(self.image_new, metadata=self.metadata)
+                demo = visual.draw_instance_predictions(inst_seg, threshold=self.treshold) # rgb Image
+                self.save_instance(demo, image_name)
+                
                 scores = inst_seg.scores.cpu()
-                keep = (scores > THRESHOLD)
+                keep = (scores > self.treshold)
                 scores = scores[keep]
                 masks = inst_seg.pred_masks[keep]
                 bboxes = inst_seg.pred_boxes.tensor[keep]
@@ -175,13 +205,13 @@ class InstanceSegm():
                     bboxes = bboxes*scale
 
                 scores = scores.numpy()
-                masks = masks.numpy()
-                bboxes = bboxes.numpy()
-                classes = classes.numpy()
+                masks = masks.cpu().numpy()
+                bboxes = bboxes.cpu().numpy()
+                classes = classes.cpu().numpy()
 
                 for obj_idx, score in enumerate(scores):
                     image_id = self.images_ids[image_name]
-                    category_id = classes[obj_idx]
+                    category_id = classes[obj_idx] + 1
                     bbox = [
                             int(bboxes[obj_idx].tolist()[0]),
                             int(bboxes[obj_idx].tolist()[1]),
@@ -191,6 +221,8 @@ class InstanceSegm():
                     # rle mask in list format
                     segmentation, area = self.binary_mask_to_rle(masks[obj_idx])
 
+                    # self.draw_instance(category_id, masks[obj_idx], bboxes[obj_idx])
+
                     self.DT_annotation = {
                         "image_id": int(image_id),
                         "category_id": int(category_id),
@@ -198,25 +230,37 @@ class InstanceSegm():
                         "area": int(area),
                         "bbox": bbox,
                         "iscrowd": 0,
-                        "score": int(score),
+                        "score": float(score),
                     }
                     self.predicted_annotation.append(self.DT_annotation)
 
+                # self.save_instance(image_name)
+                i=0
                 # break
-                self.save_instance(demo, image_name)
         
         self.total_time /= len(self.images_files)
         self.skipped_first_time /= len(self.images_files) - TIME_NUMBER_START
+        self.save_annotations()    
 
-        with open(self.output_root + "/annotation.json", "w") as outfile:
-            json.dump(self.predicted_annotation, outfile)
-        self.show_info()      
+    def draw_instance(self, category_id=None, mask=None, box=None):
+        self.image_ori = cv2.rectangle(self.image_ori, (int(box.tolist()[0]), int(box.tolist()[1])), \
+            (int(box.tolist()[2]), int(box.tolist()[3])), color=self.thing_colors[category_id-1], thickness=3)
+
+        bin_mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB)
+        color_arr = np.full_like(self.image_ori, self.thing_colors[category_id-1])
+        mask_img = np.where(bin_mask==[1, 1, 1], color_arr, self.image_ori)
+
+        self.image_ori = cv2.addWeighted(self.image_ori, 0.5, mask_img, 0.5, 0)
+
+        # plt.imshow(self.image_ori)
+        # plt.show()
+        i=0
 
     def resize_img(self):
         self.cur_width = MAX_WIDTH
         self.cur_height = MAX_HEIGHT
         dim = (self.cur_width, self.cur_height)
-        self.image_ori = cv2.resize(self.image_ori, dim, interpolation = cv2.INTER_AREA)
+        self.image_new = cv2.resize(self.image_ori.copy(), dim, interpolation = cv2.INTER_AREA)
     
     def encode_binary_mask(self, mask: np.ndarray) -> t.Text:
         """Converts a binary mask into OID challenge encoding ascii text."""
@@ -264,6 +308,16 @@ class InstanceSegm():
             os.makedirs(self.output_root)
         demo.save(os.path.join(self.output_root, "inst_" + image_name))
 
+        # cv2.imwrite(os.path.join(self.output_root, "inst_" + image_name), self.image_ori)
+
+    def save_annotations(self):
+        if not os.path.exists(self.output_root):
+            os.makedirs(self.output_root)
+
+        with open(self.output_root + "/annotation.json", "w") as outfile:
+            json.dump(self.predicted_annotation, outfile)
+        self.show_info()  
+
     def show_info(self):
         print("TOTAL TIME: ", self.total_time)
         print("TRUTH TIME: ", self.skipped_first_time)
@@ -284,6 +338,7 @@ class InstanceSegm():
             img[i:i+j] = pixel
             i = i+j
         return img.reshape(shape).T
+
 
 def main(args=None):
     '''
