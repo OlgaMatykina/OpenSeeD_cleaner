@@ -61,6 +61,9 @@ class ResizeImage():
             self.area_ori = annotation["area"]
             self.bbox_ori = annotation["bbox"]
 
+            self.height_ori = annotation["segmentation"]['size'][0]
+            self.width_ori = annotation["segmentation"]['size'][1]
+
             self.resize_bboxes() # resize bboxes, get self.bbox_new
             self.resize_masks()
 
